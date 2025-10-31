@@ -1,5 +1,6 @@
 using UnityEngine;
 using System.Collections.Generic;
+using Unity.VisualScripting;
 
 public class PathFollower : MonoBehaviour
 {
@@ -17,9 +18,9 @@ public class PathFollower : MonoBehaviour
 
     void Update()
     {
-        if (Input.GetMouseButtonDown(0))
+        if (Input.GetKeyDown(KeyCode.Space))
         {
-            Vector3 targetPos = Camera.main.ScreenToWorldPoint(Input.mousePosition);
+            Vector3 targetPos = target.transform.position;
             targetPos.z = 0f;
 
             path = AStar.FindPath(grid, transform.position, targetPos);
