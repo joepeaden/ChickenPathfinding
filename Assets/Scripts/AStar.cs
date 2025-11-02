@@ -13,22 +13,19 @@ public static class AStar
             return null; // No valid path
         }
 
-        List<Node> openSet = new List<Node>();
+        // Initialize start node costs
+        startNode.gCost = 0;
+        startNode.hCost = GetDistance(startNode, targetNode);
+
+        PriorityQueue<Node> openSet = new PriorityQueue<Node>();
+        HashSet<Node> openSetHash = new HashSet<Node>();  // O(1) contains checking
         HashSet<Node> closedSet = new HashSet<Node>();
-        openSet.Add(startNode);
+        openSet.Enqueue(startNode);
+        openSetHash.Add(startNode);
 
         while (openSet.Count > 0)
         {
-            Node currentNode = openSet[0];
-            for (int i = 1; i < openSet.Count; i++)
-            {
-                if (openSet[i].fCost < currentNode.fCost || (openSet[i].fCost == currentNode.fCost && openSet[i].hCost < currentNode.hCost))
-                {
-                    currentNode = openSet[i];
-                }
-            }
-
-            openSet.Remove(currentNode);
+            Node currentNode = openSet.Dequeue();
             closedSet.Add(currentNode);
 
             if (currentNode == targetNode)
@@ -42,14 +39,17 @@ public static class AStar
                     continue;
 
                 float newCostToNeighbor = currentNode.gCost + GetDistance(currentNode, neighbor);
-                if (newCostToNeighbor < neighbor.gCost || !openSet.Contains(neighbor))
+                if (newCostToNeighbor < neighbor.gCost || !openSetHash.Contains(neighbor))
                 {
                     neighbor.gCost = newCostToNeighbor;
                     neighbor.hCost = GetDistance(neighbor, targetNode);
                     neighbor.parent = currentNode;
 
-                    if (!openSet.Contains(neighbor))
-                        openSet.Add(neighbor);
+                    if (!openSetHash.Contains(neighbor))
+                    {
+                        openSetHash.Add(neighbor);
+                        openSet.Enqueue(neighbor);
+                    }
                 }
             }
         }
