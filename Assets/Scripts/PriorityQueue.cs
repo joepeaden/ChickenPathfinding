@@ -1,10 +1,12 @@
 using System;
 using System.Collections.Generic;
 
-/// <summary>
-/// Simple binary heap implementation for A* pathfinding
-/// </summary>
-public class PriorityQueue<T> where T : IComparable<T>
+namespace ChickenPathfinding
+{
+    /// <summary>
+    /// Simple binary heap implementation for A* pathfinding
+    /// </summary>
+    public class PriorityQueue<T> where T : IComparable<T>
 {
     private List<T> heap = new List<T>();
 
@@ -68,4 +70,5 @@ public class PriorityQueue<T> where T : IComparable<T>
         heap[index1] = heap[index2];
         heap[index2] = temp;
     }
+}
 }
