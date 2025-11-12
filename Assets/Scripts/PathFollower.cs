@@ -1,78 +1,57 @@
 using UnityEngine;
-using System.Collections.Generic;
+using Unity.Mathematics;
 
 namespace ChickenPathfinding
 {
     public class PathFollower : MonoBehaviour
     {
-        Grid grid;
-        List<Vector3> path;
+        private const float REACHED_DESTINATION_THRESHOLD = 0.01f;
+
+        FlowFieldController flowController;
         public float speed = 5f;
-        int targetIndex;
-        public Transform player;
-        public Transform target;
 
         void Start()
         {
-            grid = FindObjectOfType<Grid>();
+            flowController = FindObjectOfType<FlowFieldController>();
         }
 
         void Update()
         {
-            if (Input.GetKeyDown(KeyCode.Space))
+            if (flowController != null)
             {
-                Vector3 targetPos = target.transform.position;
-                targetPos.z = 0f;
-
-                path = AStar.FindPath(grid, transform.position, targetPos);
-
-                if (path != null && path.Count > 0)
+                // Get movement direction from flow field
+                float2 moveVector = flowController.GetFlowDirection(transform.position);
+                if (!HaveReachedDestination(moveVector))
                 {
-                    targetIndex = 0;
-                    StopCoroutine("FollowPath");
-                    StartCoroutine("FollowPath");
+                    // Move in the flow direction
+                    Vector3 moveDirection = new Vector3(moveVector.x, moveVector.y, 0).normalized;
+                    transform.position += speed * Time.deltaTime * moveDirection;
                 }
             }
         }
 
-        System.Collections.IEnumerator FollowPath()
+        private bool HaveReachedDestination(float2 moveVector)
         {
-            Vector3 currentWaypoint = path[0];
-
-            while (true)
-            {
-                if (transform.position == currentWaypoint)
-                {
-                    targetIndex++;
-                    if (targetIndex >= path.Count)
-                    {
-                        yield break;
-                    }
-                    currentWaypoint = path[targetIndex];
-                }
-
-                transform.position = Vector3.MoveTowards(transform.position, currentWaypoint, speed * Time.deltaTime);
-                yield return null;
-            }
+            // if the move vector returned is less than this value, we've reached our target
+            // the vector is practically (0, 0)
+            return math.lengthsq(moveVector) < REACHED_DESTINATION_THRESHOLD;
         }
 
         void OnDrawGizmos()
         {
-            if (path != null)
+            if (flowController != null && flowController.target != null)
             {
-                for (int i = targetIndex; i < path.Count; i++)
-                {
-                    Gizmos.color = Color.black;
-                    Gizmos.DrawCube(path[i], Vector3.one * 0.3f);
+                // Draw line to target
+                Gizmos.color = Color.green;
+                Gizmos.DrawLine(transform.position, flowController.target.position);
 
-                    if (i == targetIndex)
-                    {
-                        Gizmos.DrawLine(transform.position, path[i]);
-                    }
-                    else
-                    {
-                        Gizmos.DrawLine(path[i - 1], path[i]);
-                    }
+                // Draw current flow direction
+                float2 moveVector = flowController.GetFlowDirection(transform.position);
+                if (!HaveReachedDestination(moveVector))
+                {
+                    Gizmos.color = Color.cyan;
+                    Vector3 dir = new Vector3(moveVector.x, moveVector.y, 0).normalized;
+                    Gizmos.DrawRay(transform.position, dir * 2f);
                 }
             }
         }

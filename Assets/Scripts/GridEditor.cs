@@ -3,14 +3,14 @@ using UnityEditor;
 
 namespace ChickenPathfinding
 {
-    [CustomEditor(typeof(Grid))]
+    [CustomEditor(typeof(MyGrid))]
     public class GridEditor : Editor
     {
         public override void OnInspectorGUI()
         {
             DrawDefaultInspector();
 
-            Grid grid = (Grid)target;
+            MyGrid grid = (MyGrid)target;
 
             if (GUILayout.Button("Regenerate Grid"))
             {
