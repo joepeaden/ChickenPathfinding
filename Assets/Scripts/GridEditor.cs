@@ -14,7 +14,7 @@ namespace ChickenPathfinding
 
             if (GUILayout.Button("Regenerate Grid"))
             {
-                grid.GenerateGrid();
+                grid.CreateGrid();
                 EditorUtility.SetDirty(grid);
             }
         }

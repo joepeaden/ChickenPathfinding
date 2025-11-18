@@ -19,31 +19,16 @@ namespace ChickenPathfinding
         [SerializeField] private float nodeSize = 1f;
 
         public LayerMask obstacleLayer;
-        [SerializeField] private bool autoGenerateOnStart = true;
 
         private GridData _gridDataReadonly;
         private NativeArray<Node> grid;
 
         private void Awake()
         {
-            if (autoGenerateOnStart && grid == null)
-            {
-                GenerateGrid();
-            }
-        }
-
-        [ContextMenu("Generate Grid")]
-        public void GenerateGrid()
-        {
             CreateGrid();
         }
 
-        private void OnValidate()
-        {
-            GenerateGrid();
-        }
-
-        private void CreateGrid()
+        public void CreateGrid()
         {
             DisposeGrid();
             grid = new NativeArray<Node>(width * height, Allocator.Persistent);
