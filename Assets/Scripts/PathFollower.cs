@@ -12,25 +12,32 @@ namespace ChickenPathfinding
 
         void Start()
         {
+            // get rid of these static and find things
             flowController = FindObjectOfType<FlowFieldController>();
+            PathFollowerController.pathFollowers.Add(this);
+        }
+
+        private void Oestroy()
+        {
+            PathFollowerController.pathFollowers.Remove(this);
         }
 
         void Update()
         {
-            if (flowController != null)
-            {
-                // Get movement direction from flow field
-                float2 moveVector = flowController.GetFlowDirection(transform.position);
-                if (!HaveReachedDestination(moveVector))
-                {
-                    // Move in the flow direction
-                    Vector3 moveDirection = new Vector3(moveVector.x, moveVector.y, 0).normalized;
-                    transform.position += speed * Time.deltaTime * moveDirection;
-                }
-            }
+            // if (flowController != null)
+            // {
+            //     // Get movement direction from flow field
+            //     float2 moveVector = flowController.GetFlowDirection(transform.position);
+            //     if (!HaveReachedDestination(moveVector))
+            //     {
+            //         // Move in the flow direction
+            //         Vector3 moveDirection = new Vector3(moveVector.x, moveVector.y, 0).normalized;
+            //         transform.position += speed * Time.deltaTime * moveDirection;
+            //     }
+            // }
         }
 
-        private bool HaveReachedDestination(float2 moveVector)
+        public bool HaveReachedDestination(float2 moveVector)
         {
             // if the move vector returned is less than this value, we've reached our target
             // the vector is practically (0, 0)

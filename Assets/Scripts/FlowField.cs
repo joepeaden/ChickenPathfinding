@@ -9,7 +9,9 @@ namespace ChickenPathfinding
     {
         private byte[,] costField; // Cost values (0 = obstacle, 1 = walkable, 255 = goal)
         private ushort[,] integrationField; // Accumulated cost from goal
-        private float2[,] flowField; // Direction vectors
+        
+        // this needs to be private.
+        public float2[,] flowField; // Direction vectors
 
         private int _width;
         private int _height;
@@ -60,8 +62,8 @@ namespace ChickenPathfinding
 
         private int2 WorldToGrid(float3 worldPos, GridData gridData)
         {
-            int x = Mathf.RoundToInt(worldPos.x / gridData.nodeSize + gridData.width / 2f);
-            int y = Mathf.RoundToInt(worldPos.y / gridData.nodeSize + gridData.height / 2f);
+            int x = (int)math.round(worldPos.x / gridData.nodeSize + gridData.width / 2f);
+            int y = (int)math.round(worldPos.y / gridData.nodeSize + gridData.height / 2f);
             return new int2(x, y);
         }
 

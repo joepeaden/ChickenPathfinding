@@ -5,7 +5,8 @@ namespace ChickenPathfinding
 {
     public class FlowFieldController : MonoBehaviour
     {
-        [SerializeField] private MyGrid _grid;
+        // privatize this!!!!!
+        [SerializeField] public MyGrid _grid;
         public Transform target;
         private FlowField flowField;
         private int2 lastTargetGridPos = new int2(-1, -1);
@@ -39,9 +40,14 @@ namespace ChickenPathfinding
         }
 
         // Provide access to flow field for agents
-        public float2 GetFlowDirection(Vector3 worldPosition)
+        public float2 GetFlowDirection(float3 worldPosition)
         {
             return flowField.GetDirection(worldPosition, _grid.GridDataReadonly);
+        }
+
+        public float2[,] GetFlowField()
+        {
+            return flowField.flowField;
         }
 
         void OnDrawGizmos()
