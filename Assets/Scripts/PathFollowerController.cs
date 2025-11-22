@@ -120,26 +120,27 @@ namespace ChickenPathfinding
 
     public struct AssignMoveDirJob : IJobParallelFor
     {
-        public float2[,] flowField;
+        public NativeArray<float2> flowField;
         public GridData gridData;
         public NativeArray<float3> currentPositions;
         public NativeArray<float2> resultDirections;
 
         public void Execute(int index)
-        {            
+        {
             int2 gridPos = WorldToGrid(currentPositions[index], gridData);
             resultDirections[index] = GetDirection(gridPos);
         }
-        
+
         private bool IsValidPosition(int2 pos)
         {
-            return pos.x >= 0 && pos.x < flowField.GetLength(0) && pos.y >= 0 && pos.y < flowField.GetLength(1);
+            return pos.x >= 0 && pos.x < gridData.width && pos.y >= 0 && pos.y < gridData.height;
         }
 
         public float2 GetDirection(int2 pos)
         {
             if (!IsValidPosition(pos)) return float2.zero;
-            return flowField[pos.x, pos.y];
+            int index = pos.x + pos.y * gridData.width;
+            return flowField[index];
         }
 
         public float2 GetDirection(float3 worldPos, GridData gridData)

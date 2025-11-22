@@ -11,7 +11,7 @@ namespace ChickenPathfinding
         private ushort[,] integrationField; // Accumulated cost from goal
         
         // this needs to be private.
-        public float2[,] flowField; // Direction vectors
+        public NativeArray<float2> flowField; // Direction vectors, flattened to 1D
 
         private int _width;
         private int _height;
@@ -23,12 +23,18 @@ namespace ChickenPathfinding
 
         public void Generate(GridData gridData, int2 goalPosition)
         {
+            // Dispose existing NativeArray if resizing
+            if (flowField.IsCreated && (costField == null || costField.GetLength(0) != gridData.width || costField.GetLength(1) != gridData.height))
+            {
+                flowField.Dispose();
+            }
+
             // Initialize arrays if needed
             if (costField == null || costField.GetLength(0) != gridData.width || costField.GetLength(1) != gridData.height)
             {
                 costField = new byte[gridData.width, gridData.height];
                 integrationField = new ushort[gridData.width, gridData.height];
-                flowField = new float2[gridData.width, gridData.height];
+                flowField = new NativeArray<float2>(gridData.width * gridData.height, Allocator.Persistent);
                 _width = gridData.width;
                 _height = gridData.height;
             }
@@ -46,7 +52,8 @@ namespace ChickenPathfinding
         public float2 GetDirection(int2 pos)
         {
             if (!IsValidPosition(pos)) return float2.zero;
-            return flowField[pos.x, pos.y];
+            int index = pos.x + pos.y * _width;
+            return flowField[index];
         }
 
         public float2 GetDirection(float3 worldPos, GridData gridData)
@@ -148,7 +155,8 @@ namespace ChickenPathfinding
                 for (int y = 0; y < _height; y++)
                 {
                     int2 pos = new int2(x, y);
-                    flowField[x, y] = CalculateDirection(pos);
+                    int index = x + y * _width;
+                    flowField[index] = CalculateDirection(pos);
                 }
             }
         }
@@ -185,6 +193,14 @@ namespace ChickenPathfinding
             }
 
             return bestDirection;
+        }
+
+        public void Dispose()
+        {
+            if (flowField.IsCreated)
+            {
+                flowField.Dispose();
+            }
         }
     }
 }

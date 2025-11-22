@@ -1,4 +1,5 @@
 using UnityEngine;
+using Unity.Collections;
 using Unity.Mathematics;
 
 namespace ChickenPathfinding
@@ -45,9 +46,14 @@ namespace ChickenPathfinding
             return flowField.GetDirection(worldPosition, _grid.GridDataReadonly);
         }
 
-        public float2[,] GetFlowField()
+        public NativeArray<float2> GetFlowField()
         {
             return flowField.flowField;
+        }
+
+        void OnDestroy()
+        {
+            flowField?.Dispose();
         }
 
         void OnDrawGizmos()
