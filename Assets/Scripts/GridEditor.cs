@@ -3,6 +3,7 @@ using UnityEditor;
 
 namespace ChickenPathfinding
 {
+    #if UNITY_EDITOR
     [CustomEditor(typeof(MyGrid))]
     public class GridEditor : Editor
     {
@@ -19,4 +20,5 @@ namespace ChickenPathfinding
             }
         }
     }
+    #endif
 }
