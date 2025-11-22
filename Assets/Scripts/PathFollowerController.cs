@@ -120,9 +120,9 @@ namespace ChickenPathfinding
 
     public struct AssignMoveDirJob : IJobParallelFor
     {
-        public NativeArray<float2> flowField;
-        public GridData gridData;
-        public NativeArray<float3> currentPositions;
+        [ReadOnly] public NativeArray<float2> flowField;
+        [ReadOnly] public GridData gridData;
+        [ReadOnly] public NativeArray<float3> currentPositions;
         public NativeArray<float2> resultDirections;
 
         public void Execute(int index)
@@ -139,20 +139,14 @@ namespace ChickenPathfinding
         public float2 GetDirection(int2 pos)
         {
             if (!IsValidPosition(pos)) return float2.zero;
-            int index = pos.x + pos.y * gridData.width;
-            return flowField[index];
-        }
-
-        public float2 GetDirection(float3 worldPos, GridData gridData)
-        {
-            int2 gridPos = WorldToGrid(worldPos, gridData);
-            return GetDirection(gridPos);
+            int theIndex = pos.x + pos.y * gridData.width;
+            return flowField[theIndex];
         }
 
         private int2 WorldToGrid(float3 worldPos, GridData gridData)
         {
-            int x = (int)math.round(worldPos.x / gridData.nodeSize + gridData.width / 2f);
-            int y = (int)math.round(worldPos.y / gridData.nodeSize + gridData.height / 2f);
+            int x = (int)math.floor(worldPos.x / gridData.nodeSize + gridData.width / 2f);
+            int y = (int)math.floor(worldPos.y / gridData.nodeSize + gridData.height / 2f);
             return new int2(x, y);
         }
     }
