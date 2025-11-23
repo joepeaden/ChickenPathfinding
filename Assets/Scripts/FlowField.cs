@@ -1,4 +1,3 @@
-using UnityEngine;
 using Unity.Collections;
 using Unity.Mathematics;
 using System.Collections.Generic;
@@ -9,7 +8,9 @@ namespace ChickenPathfinding
     {
         private byte[,] costField; // Cost values (0 = obstacle, 1 = walkable, 255 = goal)
         private ushort[,] integrationField; // Accumulated cost from goal
-        private float2[,] flowField; // Direction vectors
+        
+        public NativeArray<float2> GeneratedFlowField =>  _generatedFlowField;
+        private NativeArray<float2> _generatedFlowField; // Direction vectors, flattened to 1D
 
         private int _width;
         private int _height;
@@ -21,12 +22,18 @@ namespace ChickenPathfinding
 
         public void Generate(GridData gridData, int2 goalPosition)
         {
+            // Dispose existing NativeArray if resizing
+            if (_generatedFlowField.IsCreated && (costField == null || costField.GetLength(0) != gridData.width || costField.GetLength(1) != gridData.height))
+            {
+                _generatedFlowField.Dispose();
+            }
+
             // Initialize arrays if needed
             if (costField == null || costField.GetLength(0) != gridData.width || costField.GetLength(1) != gridData.height)
             {
                 costField = new byte[gridData.width, gridData.height];
                 integrationField = new ushort[gridData.width, gridData.height];
-                flowField = new float2[gridData.width, gridData.height];
+                _generatedFlowField = new NativeArray<float2>(gridData.width * gridData.height, Allocator.Persistent);
                 _width = gridData.width;
                 _height = gridData.height;
             }
@@ -44,7 +51,8 @@ namespace ChickenPathfinding
         public float2 GetDirection(int2 pos)
         {
             if (!IsValidPosition(pos)) return float2.zero;
-            return flowField[pos.x, pos.y];
+            int index = pos.x + pos.y * _width;
+            return _generatedFlowField[index];
         }
 
         public float2 GetDirection(float3 worldPos, GridData gridData)
@@ -60,8 +68,8 @@ namespace ChickenPathfinding
 
         private int2 WorldToGrid(float3 worldPos, GridData gridData)
         {
-            int x = Mathf.RoundToInt(worldPos.x / gridData.nodeSize + gridData.width / 2f);
-            int y = Mathf.RoundToInt(worldPos.y / gridData.nodeSize + gridData.height / 2f);
+            int x = (int)math.round(worldPos.x / gridData.nodeSize + gridData.width / 2f);
+            int y = (int)math.round(worldPos.y / gridData.nodeSize + gridData.height / 2f);
             return new int2(x, y);
         }
 
@@ -146,7 +154,8 @@ namespace ChickenPathfinding
                 for (int y = 0; y < _height; y++)
                 {
                     int2 pos = new int2(x, y);
-                    flowField[x, y] = CalculateDirection(pos);
+                    int index = x + y * _width;
+                    _generatedFlowField[index] = CalculateDirection(pos);
                 }
             }
         }
@@ -183,6 +192,14 @@ namespace ChickenPathfinding
             }
 
             return bestDirection;
+        }
+
+        public void Dispose()
+        {
+            if (_generatedFlowField.IsCreated)
+            {
+                _generatedFlowField.Dispose();
+            }
         }
     }
 }
