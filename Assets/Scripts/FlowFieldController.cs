@@ -3,6 +3,7 @@ using Unity.Collections;
 using Unity.Mathematics;
 using Unity.Jobs;
 using System.Linq;
+using Unity.Burst;
 
 namespace ChickenPathfinding
 {
@@ -62,6 +63,7 @@ namespace ChickenPathfinding
         }
     }
 
+    [BurstCompile]
     public struct AssignMoveDirJob : IJobParallelFor
     {
         [ReadOnly] public NativeArray<float2> flowField;
