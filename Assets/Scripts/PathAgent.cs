@@ -13,11 +13,9 @@ namespace ChickenPathfinding
             _agentSpawnedEvent.Invoke(this);
         }
 
-        public bool HaveReachedDestination(float2 moveVector)
+        public void MoveByOffset(Vector3 offset)
         {
-            // if the move vector returned is less than this value, we've reached our target
-            // the vector is practically (0, 0)
-            return math.lengthsq(moveVector) < REACHED_DESTINATION_THRESHOLD;
+            transform.position += offset;
         }
     }
 }
