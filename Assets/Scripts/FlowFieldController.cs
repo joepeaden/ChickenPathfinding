@@ -39,7 +39,7 @@ namespace ChickenPathfinding
         {
             AssignMoveDirJob assignMoveJob = new AssignMoveDirJob()
             {
-                flowField = flowField.flowField,
+                flowField = flowField.GeneratedFlowField,
                 gridData = _grid.GridDataReadonly,
                 currentPositions = currentPositions,
                 resultDirections = resultDirections

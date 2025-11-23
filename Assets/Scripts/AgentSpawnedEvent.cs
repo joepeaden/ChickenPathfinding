@@ -3,6 +3,9 @@ using UnityEngine.Events;
 
 namespace ChickenPathfinding
 {
+    /// <summary>
+    /// All this does is tell listeners that an agent was spawned and gives the reference.
+    /// </summary>
     [CreateAssetMenu(fileName = "AgentSpawnedEvent", menuName = "Events/AgentSpawnedEvent")]
     public class AgentSpawnedEvent : ScriptableObject
     {
