@@ -1,91 +1,97 @@
 using UnityEngine;
 using Unity.Collections;
 using Unity.Mathematics;
+using Unity.Jobs;
+using System.Linq;
 
 namespace ChickenPathfinding
 {
-    public class FlowFieldController : MonoBehaviour
+    /// <summary>
+    /// Handles generating the flow field, and allows use of the flow field through GetFlowDirections
+    /// when necessary.
+    /// </summary>
+    public class FlowFieldController
     {
-        // privatize this!!!!!
-        [SerializeField] public MyGrid _grid;
-        public Transform target;
+        private MyGrid _grid;
         private FlowField flowField;
-        private int2 lastTargetGridPos = new int2(-1, -1);
 
-        void Start()
+        public FlowFieldController(MyGrid grid)
         {
-            if (_grid == null)
-            {
-                Debug.LogError("[FlowFieldController] Grid reference is missing.");
-                throw new System.Exception("FlowFieldController cannot start: Grid is null.");
-            }
-
+            _grid = grid;
             flowField = new FlowField();
         }
 
-        void Update()
+        public void RegenFlowField(int2 destination)
         {
-            if (target != null && _grid.Nodes.IsCreated)
-            {
-                int2 targetGridPos = new int2(
-                    Mathf.RoundToInt(target.position.x / _grid.NodeSize + _grid.Width / 2f),
-                    Mathf.RoundToInt(target.position.y / _grid.NodeSize + _grid.Height / 2f)
-                );
+            flowField.Generate(_grid.GridDataReadonly, destination);
+        }
 
-                if (targetGridPos.x != lastTargetGridPos.x || targetGridPos.y != lastTargetGridPos.y)
-                {
-                    flowField.Generate(_grid.GridDataReadonly, targetGridPos);
-                    lastTargetGridPos = targetGridPos;
-                }
-            }
+        public int2 GetGridPositionFromWorld(Vector3 position)
+        {
+            return new int2(
+                Mathf.RoundToInt(position.x / _grid.NodeSize + _grid.Width / 2f),
+                Mathf.RoundToInt(position.y / _grid.NodeSize + _grid.Height / 2f)
+            );
         }
 
         // Provide access to flow field for agents
-        public float2 GetFlowDirection(float3 worldPosition)
+        public void GetFlowDirections(NativeArray<float3> currentPositions, NativeArray<float2> resultDirections)
         {
-            return flowField.GetDirection(worldPosition, _grid.GridDataReadonly);
+            AssignMoveDirJob assignMoveJob = new AssignMoveDirJob()
+            {
+                flowField = flowField.flowField,
+                gridData = _grid.GridDataReadonly,
+                currentPositions = currentPositions,
+                resultDirections = resultDirections
+            };
+
+            JobHandle jh = assignMoveJob.Schedule(currentPositions.Count(), 100);
+            
+            // I could see if there's a way to complete this without forcing it to be this frame - do we 
+            // really need to update positions every frame? If not then we'd have to make it not call a 
+            // new job until the last job was done.
+            jh.Complete();
         }
 
-        public NativeArray<float2> GetFlowField()
-        {
-            return flowField.flowField;
-        }
-
-        void OnDestroy()
+        /// <summary>
+        /// Dispose anything that needs disposing
+        /// </summary>
+        public void Cleanup()
         {
             flowField?.Dispose();
         }
+    }
 
-        void OnDrawGizmos()
+    public struct AssignMoveDirJob : IJobParallelFor
+    {
+        [ReadOnly] public NativeArray<float2> flowField;
+        [ReadOnly] public GridData gridData;
+        [ReadOnly] public NativeArray<float3> currentPositions;
+        public NativeArray<float2> resultDirections;
+
+        public void Execute(int index)
         {
-            if (target != null)
-            {
-                Gizmos.color = Color.yellow;
-                Gizmos.DrawSphere(target.position, 0.5f);
-            }
+            int2 gridPos = WorldToGrid(currentPositions[index], gridData);
+            resultDirections[index] = GetDirection(gridPos);
+        }
 
-            // Draw flow field directions
-            if (flowField != null && _grid != null && _grid.Nodes.IsCreated)
-            {
-                for (int i = 0; i < _grid.Nodes.Length; i++)
-                {
-                    var node = _grid.Nodes[i];
-                    if (!node.walkable) continue;
+        private bool IsValidPosition(int2 pos)
+        {
+            return pos.x >= 0 && pos.x < gridData.width && pos.y >= 0 && pos.y < gridData.height;
+        }
 
-                    Vector3 worldPos = new Vector3(
-                        (node.position.x - _grid.Width / 2f) * _grid.NodeSize,
-                        (node.position.y - _grid.Height / 2f) * _grid.NodeSize,
-                        0
-                    );
+        public float2 GetDirection(int2 pos)
+        {
+            if (!IsValidPosition(pos)) return float2.zero;
+            int theIndex = pos.x + pos.y * gridData.width;
+            return flowField[theIndex];
+        }
 
-                    float2 direction = flowField.GetDirection(node.position);
-                    if (math.lengthsq(direction) > 0.01f)
-                    {
-                        Gizmos.color = Color.blue;
-                        Gizmos.DrawRay(worldPos, new Vector3(direction.x, direction.y, 0) * _grid.NodeSize * 0.5f);
-                    }
-                }
-            }
+        private int2 WorldToGrid(float3 worldPos, GridData gridData)
+        {
+            int x = (int)math.floor(worldPos.x / gridData.nodeSize + gridData.width / 2f);
+            int y = (int)math.floor(worldPos.y / gridData.nodeSize + gridData.height / 2f);
+            return new int2(x, y);
         }
     }
 }
