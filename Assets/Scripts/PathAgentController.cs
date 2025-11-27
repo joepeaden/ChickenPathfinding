@@ -48,24 +48,26 @@ namespace ChickenPathfinding
 
             if (_flowDirectionJobHandle.IsCompleted && _assignMoveJobHandle.IsCompleted)
             {
-                SchedulePathfinding();
+                _flowDirectionJobHandle.Complete();
+                _assignMoveJobHandle.Complete();
+                ScheduleFindMoveDirection();
             }
         }
 
-        private void LateUpdate()
-        {           
-            // _flowDirectionJobHandle.Complete();
-            _assignMoveJobHandle.Complete();
+        // private void LateUpdate()
+        // {           
+        //     // _flowDirectionJobHandle.Complete();
+        //     _assignMoveJobHandle.Complete();
 
-            // this also needs to be a job
-            // for (int i = 0; i < _pathAgents.Count; i++)
-            // {
-            //     if (!IsZeroMoveDir(_moveOffsets[i]))
-            //     {
-            //         _pathAgents[i].MoveByOffset(_moveOffsets[i]);
-            //     }
-            // }
-        }
+        //     // this also needs to be a job
+        //     // for (int i = 0; i < _pathAgents.Count; i++)
+        //     // {
+        //     //     if (!IsZeroMoveDir(_moveOffsets[i]))
+        //     //     {
+        //     //         _pathAgents[i].MoveByOffset(_moveOffsets[i]);
+        //     //     }
+        //     // }
+        // }
 
         private void OnDestroy()
         {
@@ -92,7 +94,7 @@ namespace ChickenPathfinding
             }
         }
 
-        private void SchedulePathfinding()
+        private void ScheduleFindMoveDirection()
         {
             // what happens if there aren't enough current positions? catch error.
             for (int i = 0; i < _pathAgents.Count; i++)
@@ -101,10 +103,10 @@ namespace ChickenPathfinding
             }
 
             _flowDirectionJobHandle = _flowController.ScheduleGetFlowDirections(_currentPositions, _resultDirections);
-            _assignMoveJobHandle = ScheduleAssignMove(_flowDirectionJobHandle);
+            _assignMoveJobHandle = ScheduleAssignMove();
         }
 
-        private JobHandle ScheduleAssignMove(JobHandle _flowDirectionsHandle)
+        private JobHandle ScheduleAssignMove()
         {
             CreateTransformOffsets assignMoveJob = new ()
             {
@@ -114,7 +116,7 @@ namespace ChickenPathfinding
                 deltaTime = Time.deltaTime
             };
 
-            return assignMoveJob.ScheduleByRef(_transformAccessArray, _flowDirectionsHandle);
+            return assignMoveJob.ScheduleByRef(_transformAccessArray, _flowDirectionJobHandle);
         }
 
         // private bool IsZeroMoveDir(float3 moveDir)
