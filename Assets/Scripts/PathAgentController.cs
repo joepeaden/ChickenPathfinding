@@ -54,21 +54,6 @@ namespace ChickenPathfinding
             }
         }
 
-        // private void LateUpdate()
-        // {           
-        //     // _flowDirectionJobHandle.Complete();
-        //     _assignMoveJobHandle.Complete();
-
-        //     // this also needs to be a job
-        //     // for (int i = 0; i < _pathAgents.Count; i++)
-        //     // {
-        //     //     if (!IsZeroMoveDir(_moveOffsets[i]))
-        //     //     {
-        //     //         _pathAgents[i].MoveByOffset(_moveOffsets[i]);
-        //     //     }
-        //     // }
-        // }
-
         private void OnDestroy()
         {
             DisposePersistentCollections();
