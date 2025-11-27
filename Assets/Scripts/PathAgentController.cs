@@ -104,11 +104,6 @@ namespace ChickenPathfinding
             return assignMoveJob.ScheduleByRef(_transformAccessArray, _flowDirectionJobHandle);
         }
 
-        // private bool IsZeroMoveDir(float3 moveDir)
-        // {
-        //     return moveDir.x == 0 && moveDir.y == 0 && moveDir.z == 0;
-        // }
-
         private void DisposePersistentCollections()
         {
             if (_currentPositions.IsCreated) { _currentPositions.Dispose(); }
@@ -135,13 +130,8 @@ namespace ChickenPathfinding
             {
                 // Move in the flow direction
                 Vector3 moveDirection = new Vector3(moveVector.x, moveVector.y, 0).normalized;
-                // moveOffsets[index] = agentSpeed * deltaTime * moveDirection;
                 transform.position += agentSpeed * deltaTime * moveDirection;
             }
-            // else
-            // {
-            //     moveOffsets[index] = float3.zero;
-            // }
         }
 
         private bool HaveReachedDestination(float2 moveVector)
