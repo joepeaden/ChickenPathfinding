@@ -4,7 +4,8 @@ using Unity.Collections;
 using System.Collections.Generic;
 using Unity.Jobs;
 using Unity.Burst;
-using System.Linq;
+using UnityEngine.Jobs;
+using Unity.VisualScripting;
 
 namespace ChickenPathfinding
 {
@@ -21,18 +22,22 @@ namespace ChickenPathfinding
         [SerializeField] private AgentSpawnedEvent _agentSpawnedEvent;
 
         private FlowFieldController _flowController;
-        private int2 lastTargetGridPos = new int2(-1, -1);
-        private NativeArray<float3> currentPositions;
-        private NativeArray<float3> moveOffsets;
-        private NativeArray<float2> resultDirections;
-        private List<PathAgent> pathAgents = new();
+        private int2 _lastTargetGridPos = new int2(-1, -1);
+        private NativeArray<float3> _currentPositions;
+        private NativeArray<float3> _moveOffsets;
+        private NativeArray<float2> _resultDirections;
+        private List<PathAgent> _pathAgents = new();
+        private TransformAccessArray _transformAccessArray;
+        private JobHandle _flowDirectionJobHandle;
+        private JobHandle _assignMoveJobHandle;
 
         private void Awake()
         {
             _flowController = new (_grid);
-            currentPositions = new NativeArray<float3>(MAX_ENEMY_COUNT, Allocator.Persistent);
-            resultDirections = new NativeArray<float2>(MAX_ENEMY_COUNT, Allocator.Persistent);
-            moveOffsets = new NativeArray<float3>(MAX_ENEMY_COUNT, Allocator.Persistent);
+            _currentPositions = new (MAX_ENEMY_COUNT, Allocator.Persistent);
+            _resultDirections = new (MAX_ENEMY_COUNT, Allocator.Persistent);
+            _moveOffsets = new (MAX_ENEMY_COUNT, Allocator.Persistent);
+            _transformAccessArray = new (MAX_ENEMY_COUNT);
 
             _agentSpawnedEvent.AddListener(HandleAgentSpawned);
         }
@@ -40,8 +45,13 @@ namespace ChickenPathfinding
         private void Update()
         {
             RegenFlowIfNeeded();
-            
-            HandlePathfinding();
+
+            if (_flowDirectionJobHandle.IsCompleted && _assignMoveJobHandle.IsCompleted)
+            {
+                _flowDirectionJobHandle.Complete();
+                _assignMoveJobHandle.Complete();
+                ScheduleFindMoveDirection();
+            }
         }
 
         private void OnDestroy()
@@ -53,68 +63,58 @@ namespace ChickenPathfinding
 
         private void HandleAgentSpawned(PathAgent agent)
         {
-            pathAgents.Add(agent);
+            _pathAgents.Add(agent);
+         
+            _transformAccessArray.Add(agent.transform);
         }
 
         private void RegenFlowIfNeeded()
         {
             int2 targetGridPos = _flowController.GetGridPositionFromWorld(target.transform.position);
 
-            if (targetGridPos.x != lastTargetGridPos.x || targetGridPos.y != lastTargetGridPos.y)
+            if (targetGridPos.x != _lastTargetGridPos.x || targetGridPos.y != _lastTargetGridPos.y)
             {
                 _flowController.RegenFlowField(targetGridPos);
-                lastTargetGridPos = targetGridPos;
+                _lastTargetGridPos = targetGridPos;
             }
         }
 
-        private void HandlePathfinding()
+        private void ScheduleFindMoveDirection()
         {
             // what happens if there aren't enough current positions? catch error.
-            for (int i = 0; i < pathAgents.Count; i++)
+            for (int i = 0; i < _pathAgents.Count; i++)
             {
-                currentPositions[i] = pathAgents[i].transform.position;
+                _currentPositions[i] = _pathAgents[i].transform.position;
             }
 
-            _flowController.GetFlowDirections(currentPositions, resultDirections);
+            _flowDirectionJobHandle = _flowController.ScheduleGetFlowDirections(_currentPositions, _resultDirections);
+            _assignMoveJobHandle = ScheduleAssignMove();
+        }
 
+        private JobHandle ScheduleAssignMove()
+        {
             CreateTransformOffsets assignMoveJob = new ()
             {
-                resultDirections = resultDirections,
-                moveOffsets = moveOffsets,
+                resultDirections = _resultDirections,
+                moveOffsets = _moveOffsets,
                 agentSpeed = agentSpeed,
                 deltaTime = Time.deltaTime
             };
 
-            JobHandle jh = assignMoveJob.Schedule(currentPositions.Count(), 100);
-            
-            // do we really have to force complete? Same as with in FlowController.GetFlowDirections.
-            jh.Complete();
-
-            // this also needs to be a job
-            for (int i = 0; i < pathAgents.Count; i++)
-            {
-                if (!IsZeroMoveDir(moveOffsets[i]))
-                {
-                    pathAgents[i].MoveByOffset(moveOffsets[i]);
-                }
-            }
-        }
-
-        private bool IsZeroMoveDir(float3 moveDir)
-        {
-            return moveDir.x == 0 && moveDir.y == 0 && moveDir.z == 0;
+            return assignMoveJob.ScheduleByRef(_transformAccessArray, _flowDirectionJobHandle);
         }
 
         private void DisposePersistentCollections()
         {
-            if (currentPositions.IsCreated) { currentPositions.Dispose(); }
-            if (moveOffsets.IsCreated) { moveOffsets.Dispose(); }
-            if (resultDirections.IsCreated) { resultDirections.Dispose(); }
+            if (_currentPositions.IsCreated) { _currentPositions.Dispose(); }
+            if (_moveOffsets.IsCreated) { _moveOffsets.Dispose(); }
+            if (_resultDirections.IsCreated) { _resultDirections.Dispose(); }
+            if (_transformAccessArray.isCreated) { _transformAccessArray.Dispose(); }
         }
     }
 
      [BurstCompile]
-    public struct CreateTransformOffsets : IJobParallelFor
+    public struct CreateTransformOffsets : IJobParallelForTransform
     {
         private const float REACHED_DESTINATION_THRESHOLD = 0.01f;
         [ReadOnly] public NativeArray<float2> resultDirections;
@@ -122,7 +122,7 @@ namespace ChickenPathfinding
         [ReadOnly] public float deltaTime;
         public NativeArray<float3> moveOffsets;
 
-        public void Execute(int index)
+        public void Execute(int index, TransformAccess transform)
         {
             float2 moveVector = resultDirections[index]; 
 
@@ -130,11 +130,7 @@ namespace ChickenPathfinding
             {
                 // Move in the flow direction
                 Vector3 moveDirection = new Vector3(moveVector.x, moveVector.y, 0).normalized;
-                moveOffsets[index] = agentSpeed * deltaTime * moveDirection;
-            }
-            else
-            {
-                moveOffsets[index] = float3.zero;
+                transform.position += agentSpeed * deltaTime * moveDirection;
             }
         }
 

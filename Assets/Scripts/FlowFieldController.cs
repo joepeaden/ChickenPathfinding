@@ -36,7 +36,7 @@ namespace ChickenPathfinding
         }
 
         // Provide access to flow field for agents
-        public void GetFlowDirections(NativeArray<float3> currentPositions, NativeArray<float2> resultDirections)
+        public JobHandle ScheduleGetFlowDirections(NativeArray<float3> currentPositions, NativeArray<float2> resultDirections)
         {
             AssignMoveDirJob assignMoveJob = new AssignMoveDirJob()
             {
@@ -46,12 +46,7 @@ namespace ChickenPathfinding
                 resultDirections = resultDirections
             };
 
-            JobHandle jh = assignMoveJob.Schedule(currentPositions.Count(), 100);
-            
-            // I could see if there's a way to complete this without forcing it to be this frame - do we 
-            // really need to update positions every frame? If not then we'd have to make it not call a 
-            // new job until the last job was done.
-            jh.Complete();
+            return assignMoveJob.Schedule(currentPositions.Count(), 100);
         }
 
         /// <summary>
