@@ -4,9 +4,8 @@ using Unity.Collections;
 using System.Collections.Generic;
 using Unity.Jobs;
 using Unity.Burst;
-using System.Linq;
 using UnityEngine.Jobs;
-using UnityEditor.Rendering;
+using Unity.VisualScripting;
 
 namespace ChickenPathfinding
 {
@@ -28,16 +27,17 @@ namespace ChickenPathfinding
         private NativeArray<float3> _moveOffsets;
         private NativeArray<float2> _resultDirections;
         private List<PathAgent> _pathAgents = new();
-        private TransformAccessArray _transformAccessArray = new();
+        private TransformAccessArray _transformAccessArray;
         private JobHandle _flowDirectionJobHandle;
         private JobHandle _assignMoveJobHandle;
 
         private void Awake()
         {
             _flowController = new (_grid);
-            _currentPositions = new NativeArray<float3>(MAX_ENEMY_COUNT, Allocator.Persistent);
-            _resultDirections = new NativeArray<float2>(MAX_ENEMY_COUNT, Allocator.Persistent);
-            _moveOffsets = new NativeArray<float3>(MAX_ENEMY_COUNT, Allocator.Persistent);
+            _currentPositions = new (MAX_ENEMY_COUNT, Allocator.Persistent);
+            _resultDirections = new (MAX_ENEMY_COUNT, Allocator.Persistent);
+            _moveOffsets = new (MAX_ENEMY_COUNT, Allocator.Persistent);
+            _transformAccessArray = new (MAX_ENEMY_COUNT);
 
             _agentSpawnedEvent.AddListener(HandleAgentSpawned);
         }
@@ -127,6 +127,7 @@ namespace ChickenPathfinding
             if (_currentPositions.IsCreated) { _currentPositions.Dispose(); }
             if (_moveOffsets.IsCreated) { _moveOffsets.Dispose(); }
             if (_resultDirections.IsCreated) { _resultDirections.Dispose(); }
+            if (_transformAccessArray.isCreated) { _transformAccessArray.Dispose(); }
         }
     }
 
