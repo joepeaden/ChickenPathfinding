@@ -3,9 +3,149 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 using System.Collections.Generic;
+using Unity.Burst.CompilerServices;
 
 namespace ChickenPathfinding
 {
+    public class FlowField
+    {
+        public const ushort BLOCKED_VALUE = ushort.MaxValue;
+        public const ushort UNVISITED_VALUE= ushort.MaxValue-1;
+        public const byte NOT_WALKABLE_VALUE = 0;
+        public const byte WALKABLE_VALUE = 1;
+        public const byte TARGET_VALUE = 255;
+
+        public bool isGenerating;
+
+        private NativeArray<byte> _costField;
+        private NativeArray<ushort> _integrationField;
+
+        private NativeArray<float2> _copyOfFlowField;
+        private NativeArray<float2> _generatedFlowField;
+
+        private int _width;
+        private int _height;
+
+        public FlowField()
+        {
+            // Arrays will be initialized in Generate
+        }
+
+        public NativeArray<float2> GetCopyOfFlowField()
+        {
+            DisposeCopiedFlowField();
+            _copyOfFlowField = new (_generatedFlowField, Allocator.TempJob);
+            return _copyOfFlowField;
+        }
+
+        public void DisposeCopiedFlowField()
+        {
+            if (_copyOfFlowField.IsCreated)
+            {
+                _copyOfFlowField.Dispose();
+            }
+        }
+
+        public JobHandle KickOffGenerationJobs(GridData gridData, int2 goalPosition)
+        {
+            isGenerating = true;
+            
+            // Initialize arrays if needed
+            if (!_costField.IsCreated || _costField.Length != gridData.width * gridData.height)
+            {
+                if (_costField.IsCreated) _costField.Dispose();
+                if (_integrationField.IsCreated) _integrationField.Dispose();
+                if (_generatedFlowField.IsCreated) _generatedFlowField.Dispose();
+
+                _costField = new NativeArray<byte>(gridData.width * gridData.height, Allocator.Persistent);
+                _integrationField = new NativeArray<ushort>(gridData.width * gridData.height, Allocator.Persistent);
+                _generatedFlowField = new NativeArray<float2>(gridData.width * gridData.height, Allocator.Persistent);
+                _width = gridData.width;
+                _height = gridData.height;
+            }
+
+            int batchProcessingCount = 64;
+
+            var costJob = new CostFieldJob
+            {
+                nodes = gridData.nodes,
+                goalPosition = goalPosition,
+                costField = _costField,
+                width = _width
+            };
+            JobHandle costHandle = costJob.Schedule(gridData.nodes.Length, batchProcessingCount);
+
+            var integrationJob = new IntegrationFieldJob
+            {
+                costField = _costField,
+                integrationField = _integrationField,
+                goalPosition = goalPosition,
+                width = _width,
+                height = _height
+            };
+            JobHandle integrationHandle = integrationJob.Schedule(costHandle);
+
+            var flowJob = new FlowFieldJob
+            {
+                integrationField = _integrationField,
+                flowField = _generatedFlowField,
+                width = _width,
+                height = _height
+            };
+            JobHandle flowHandle = flowJob.Schedule(_generatedFlowField.Length, batchProcessingCount, integrationHandle);
+
+            flowHandle.Complete();
+
+            
+
+            // do I need isGenerating?
+            isGenerating = false;
+
+            return flowHandle;
+        }
+
+        public float2 GetDirection(int2 pos)
+        {
+            if (!IsValidPosition(pos)) return float2.zero;
+            int index = pos.x + pos.y * _width;
+            return _generatedFlowField[index];
+        }
+
+        public float2 GetDirection(float3 worldPos, GridData gridData)
+        {
+            int2 gridPos = WorldToGrid(worldPos, gridData);
+            return GetDirection(gridPos);
+        }
+
+        private bool IsValidPosition(int2 pos)
+        {
+            return pos.x >= 0 && pos.x < _width && pos.y >= 0 && pos.y < _height;
+        }
+
+        private int2 WorldToGrid(float3 worldPos, GridData gridData)
+        {
+            int x = (int)math.round(worldPos.x / gridData.nodeSize + gridData.width / 2f);
+            int y = (int)math.round(worldPos.y / gridData.nodeSize + gridData.height / 2f);
+            return new int2(x, y);
+        }
+
+        public void Dispose()
+        {
+            if (_costField.IsCreated)
+            {
+                _costField.Dispose();
+            }
+            if (_integrationField.IsCreated)
+            {
+                _integrationField.Dispose();
+            }
+            if (_generatedFlowField.IsCreated)
+            {
+                _generatedFlowField.Dispose();
+            }
+        }
+    }
+
     [BurstCompile]
     struct CostFieldJob : IJobParallelFor
     {
@@ -23,15 +163,15 @@ namespace ChickenPathfinding
 
             if (!node.walkable)
             {
-                costField[flatIndex] = 0;
+                costField[flatIndex] = FlowField.NOT_WALKABLE_VALUE;
             }
             else if (node.position.x == goalPosition.x && node.position.y == goalPosition.y)
             {
-                costField[flatIndex] = 255;
+                costField[flatIndex] = FlowField.TARGET_VALUE;
             }
             else
             {
-                costField[flatIndex] = 1;
+                costField[flatIndex] = FlowField.WALKABLE_VALUE;
             }
         }
     }
@@ -50,7 +190,7 @@ namespace ChickenPathfinding
             // Initialize integration field
             for (int i = 0; i < integrationField.Length; i++)
             {
-                integrationField[i] = costField[i] == 0 ? (ushort)65535 : (ushort)65534;
+                integrationField[i] = costField[i] == 0 ? FlowField.BLOCKED_VALUE : FlowField.UNVISITED_VALUE;
             }
 
             // Set goal
@@ -119,7 +259,7 @@ namespace ChickenPathfinding
             int index = pos.x + pos.y * width;
             ushort currentCost = integrationField[index];
 
-            if (currentCost >= 65534) return float2.zero;
+            if (currentCost >= FlowField.UNVISITED_VALUE) return float2.zero;
 
             float2 bestDirection = float2.zero;
             ushort bestNeighborCost = currentCost;
@@ -147,112 +287,6 @@ namespace ChickenPathfinding
             return bestDirection;
         }
     }
-
-    public class FlowField
-    {
-        private NativeArray<byte> _costField;
-        private NativeArray<ushort> _integrationField;
-
-        public NativeArray<float2> GeneratedFlowField => _generatedFlowField;
-        private NativeArray<float2> _generatedFlowField;
-
-        private int _width;
-        private int _height;
-
-        public FlowField()
-        {
-            // Arrays will be initialized in Generate
-        }
-
-        public void Generate(GridData gridData, int2 goalPosition)
-        {
-            // Initialize arrays if needed
-            if (!_costField.IsCreated || _costField.Length != gridData.width * gridData.height)
-            {
-                if (_costField.IsCreated) _costField.Dispose();
-                if (_integrationField.IsCreated) _integrationField.Dispose();
-                if (_generatedFlowField.IsCreated) _generatedFlowField.Dispose();
-
-                _costField = new NativeArray<byte>(gridData.width * gridData.height, Allocator.Persistent);
-                _integrationField = new NativeArray<ushort>(gridData.width * gridData.height, Allocator.Persistent);
-                _generatedFlowField = new NativeArray<float2>(gridData.width * gridData.height, Allocator.Persistent);
-                _width = gridData.width;
-                _height = gridData.height;
-            }
-
-            // Step 1: Initialize cost field
-            var costJob = new CostFieldJob
-            {
-                nodes = gridData.nodes,
-                goalPosition = goalPosition,
-                costField = _costField,
-                width = _width
-            };
-            JobHandle costHandle = costJob.Schedule(gridData.nodes.Length, 64);
-
-            // Step 2: Calculate integration field (Dijkstra-like)
-            var integrationJob = new IntegrationFieldJob
-            {
-                costField = _costField,
-                integrationField = _integrationField,
-                goalPosition = goalPosition,
-                width = _width,
-                height = _height
-            };
-            JobHandle integrationHandle = integrationJob.Schedule(costHandle);
-
-            // Step 3: Generate flow field
-            var flowJob = new FlowFieldJob
-            {
-                integrationField = _integrationField,
-                flowField = _generatedFlowField,
-                width = _width,
-                height = _height
-            };
-            JobHandle flowHandle = flowJob.Schedule(_generatedFlowField.Length, 64, integrationHandle);
-
-            flowHandle.Complete();
-        }
-
-        public float2 GetDirection(int2 pos)
-        {
-            if (!IsValidPosition(pos)) return float2.zero;
-            int index = pos.x + pos.y * _width;
-            return _generatedFlowField[index];
-        }
-
-        public float2 GetDirection(float3 worldPos, GridData gridData)
-        {
-            int2 gridPos = WorldToGrid(worldPos, gridData);
-            return GetDirection(gridPos);
-        }
-
-        private bool IsValidPosition(int2 pos)
-        {
-            return pos.x >= 0 && pos.x < _width && pos.y >= 0 && pos.y < _height;
-        }
-
-        private int2 WorldToGrid(float3 worldPos, GridData gridData)
-        {
-            int x = (int)math.round(worldPos.x / gridData.nodeSize + gridData.width / 2f);
-            int y = (int)math.round(worldPos.y / gridData.nodeSize + gridData.height / 2f);
-            return new int2(x, y);
-        }
-
-        public void Dispose()
-        {
-            if (_costField.IsCreated)
-            {
-                _costField.Dispose();
-            }
-            if (_integrationField.IsCreated)
-            {
-                _integrationField.Dispose();
-            }
-            if (_generatedFlowField.IsCreated)
-            {
-                _generatedFlowField.Dispose();
-            }
-        }
-    }
 }
+
+

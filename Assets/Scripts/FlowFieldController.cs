@@ -15,6 +15,7 @@ namespace ChickenPathfinding
     {
         private MyGrid _grid;
         private FlowField flowField;
+        private JobHandle _flowGenerationJobHandle;
 
         public FlowFieldController(MyGrid grid)
         {
@@ -22,9 +23,18 @@ namespace ChickenPathfinding
             flowField = new FlowField();
         }
 
-        public void RegenFlowField(int2 destination)
+        public bool IsGridReady()
         {
-            flowField.Generate(_grid.GridDataReadonly, destination);
+            return !flowField.isGenerating;         
+        }
+
+        /// <summary>
+        /// "Kickoff" because it doesn't happen immediately necesesarily, it's a Jobs implementation. 
+        /// </summary>
+        /// <param name="destination"></param>
+        public void KickOffRegenFlowField(int2 destination)
+        {
+            _flowGenerationJobHandle = flowField.KickOffGenerationJobs(_grid.GridDataReadonly, destination);
         }
 
         public int2 GetGridPositionFromWorld(Vector3 position)
@@ -40,13 +50,19 @@ namespace ChickenPathfinding
         {
             AssignMoveDirJob assignMoveJob = new AssignMoveDirJob()
             {
-                flowField = flowField.GeneratedFlowField,
+                flowField = flowField.GetCopyOfFlowField(),
                 gridData = _grid.GridDataReadonly,
                 currentPositions = currentPositions,
                 resultDirections = resultDirections
             };
 
-            return assignMoveJob.Schedule(currentPositions.Count(), 100);
+            return assignMoveJob.Schedule(currentPositions.Count(), 100, _flowGenerationJobHandle);
+        }
+
+        // this is horrendous. Passing back and forth like this. I guess this is the pain that comes with learning something new
+        public void DisposeCopiedFlowField()
+        {
+            flowField.DisposeCopiedFlowField();
         }
 
         /// <summary>

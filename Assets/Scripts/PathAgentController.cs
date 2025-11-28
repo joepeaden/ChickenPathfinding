@@ -49,7 +49,15 @@ namespace ChickenPathfinding
             if (_flowDirectionJobHandle.IsCompleted && _assignMoveJobHandle.IsCompleted)
             {
                 _flowDirectionJobHandle.Complete();
+                _flowController.DisposeCopiedFlowField();
                 _assignMoveJobHandle.Complete();
+            }
+        }
+
+        private void LateUpdate()
+        {            
+            if (_flowController.IsGridReady())
+            {
                 ScheduleFindMoveDirection();
             }
         }
@@ -74,7 +82,7 @@ namespace ChickenPathfinding
 
             if (targetGridPos.x != _lastTargetGridPos.x || targetGridPos.y != _lastTargetGridPos.y)
             {
-                _flowController.RegenFlowField(targetGridPos);
+                _flowController.KickOffRegenFlowField(targetGridPos);
                 _lastTargetGridPos = targetGridPos;
             }
         }
