@@ -1,16 +1,160 @@
+using Unity.Burst;
 using Unity.Collections;
+using Unity.Jobs;
 using Unity.Mathematics;
 using System.Collections.Generic;
 
 namespace ChickenPathfinding
 {
+    [BurstCompile]
+    struct CostFieldJob : IJobParallelFor
+    {
+        [ReadOnly] public NativeArray<Node>.ReadOnly nodes;
+        [ReadOnly] public int2 goalPosition;
+        public NativeArray<byte> costField;
+        public int width;
+
+        public void Execute(int index)
+        {
+            Node node = nodes[index];
+            int x = node.position.x;
+            int y = node.position.y;
+            int flatIndex = x + y * width;
+
+            if (!node.walkable)
+            {
+                costField[flatIndex] = 0;
+            }
+            else if (node.position.x == goalPosition.x && node.position.y == goalPosition.y)
+            {
+                costField[flatIndex] = 255;
+            }
+            else
+            {
+                costField[flatIndex] = 1;
+            }
+        }
+    }
+
+    [BurstCompile]
+    struct IntegrationFieldJob : IJob
+    {
+        public NativeArray<byte> costField;
+        public NativeArray<ushort> integrationField;
+        [ReadOnly] public int2 goalPosition;
+        [ReadOnly] public int width;
+        [ReadOnly] public int height;
+
+        public void Execute()
+        {
+            // Initialize integration field
+            for (int i = 0; i < integrationField.Length; i++)
+            {
+                integrationField[i] = costField[i] == 0 ? (ushort)65535 : (ushort)65534;
+            }
+
+            // Set goal
+            int goalIndex = goalPosition.x + goalPosition.y * width;
+            integrationField[goalIndex] = 0;
+
+            // Dijkstra's algorithm
+            NativeQueue<int2> openSet = new NativeQueue<int2>(Allocator.Temp);
+            openSet.Enqueue(goalPosition);
+
+            while (!openSet.IsEmpty())
+            {
+                int2 currentPos = openSet.Dequeue();
+                int currentIndex = currentPos.x + currentPos.y * width;
+                ushort currentCost = integrationField[currentIndex];
+
+                // Check neighbors
+                for (int dx = -1; dx <= 1; dx++)
+                {
+                    for (int dy = -1; dy <= 1; dy++)
+                    {
+                        if (dx == 0 && dy == 0) continue;
+
+                        int2 neighborPos = currentPos + new int2(dx, dy);
+                        if (neighborPos.x < 0 || neighborPos.x >= width || neighborPos.y < 0 || neighborPos.y >= height) continue;
+
+                        int nIndex = neighborPos.x + neighborPos.y * width;
+                        byte nCostValue = costField[nIndex];
+
+                        if (nCostValue == 0) continue;
+
+                        ushort moveCost = (ushort)((dx != 0 && dy != 0) ? 14 : 10);
+                        ushort newCost = (ushort)(currentCost + moveCost);
+
+                        if (newCost < integrationField[nIndex])
+                        {
+                            integrationField[nIndex] = newCost;
+                            openSet.Enqueue(neighborPos);
+                        }
+                    }
+                }
+            }
+
+            openSet.Dispose();
+        }
+    }
+
+    [BurstCompile]
+    struct FlowFieldJob : IJobParallelFor
+    {
+        [ReadOnly] public NativeArray<ushort> integrationField;
+        public NativeArray<float2> flowField;
+        [ReadOnly] public int width;
+        [ReadOnly] public int height;
+
+        public void Execute(int index)
+        {
+            int x = index % width;
+            int y = index / width;
+            int2 pos = new int2(x, y);
+            flowField[index] = CalculateDirection(pos);
+        }
+
+        private float2 CalculateDirection(int2 pos)
+        {
+            int index = pos.x + pos.y * width;
+            ushort currentCost = integrationField[index];
+
+            if (currentCost >= 65534) return float2.zero;
+
+            float2 bestDirection = float2.zero;
+            ushort bestNeighborCost = currentCost;
+
+            for (int dx = -1; dx <= 1; dx++)
+            {
+                for (int dy = -1; dy <= 1; dy++)
+                {
+                    if (dx == 0 && dy == 0) continue;
+
+                    int2 neighbor = pos + new int2(dx, dy);
+                    if (neighbor.x < 0 || neighbor.x >= width || neighbor.y < 0 || neighbor.y >= height) continue;
+
+                    int nIndex = neighbor.x + neighbor.y * width;
+                    ushort nCost = integrationField[nIndex];
+
+                    if (nCost < bestNeighborCost)
+                    {
+                        bestNeighborCost = nCost;
+                        bestDirection = math.normalize(new float2(dx, dy));
+                    }
+                }
+            }
+
+            return bestDirection;
+        }
+    }
+
     public class FlowField
     {
-        private byte[,] costField; // Cost values (0 = obstacle, 1 = walkable, 255 = goal)
-        private ushort[,] integrationField; // Accumulated cost from goal
-        
-        public NativeArray<float2> GeneratedFlowField =>  _generatedFlowField;
-        private NativeArray<float2> _generatedFlowField; // Direction vectors, flattened to 1D
+        private NativeArray<byte> _costField;
+        private NativeArray<ushort> _integrationField;
+
+        public NativeArray<float2> GeneratedFlowField => _generatedFlowField;
+        private NativeArray<float2> _generatedFlowField;
 
         private int _width;
         private int _height;
@@ -22,30 +166,52 @@ namespace ChickenPathfinding
 
         public void Generate(GridData gridData, int2 goalPosition)
         {
-            // Dispose existing NativeArray if resizing
-            if (_generatedFlowField.IsCreated && (costField == null || costField.GetLength(0) != gridData.width || costField.GetLength(1) != gridData.height))
-            {
-                _generatedFlowField.Dispose();
-            }
-
             // Initialize arrays if needed
-            if (costField == null || costField.GetLength(0) != gridData.width || costField.GetLength(1) != gridData.height)
+            if (!_costField.IsCreated || _costField.Length != gridData.width * gridData.height)
             {
-                costField = new byte[gridData.width, gridData.height];
-                integrationField = new ushort[gridData.width, gridData.height];
+                if (_costField.IsCreated) _costField.Dispose();
+                if (_integrationField.IsCreated) _integrationField.Dispose();
+                if (_generatedFlowField.IsCreated) _generatedFlowField.Dispose();
+
+                _costField = new NativeArray<byte>(gridData.width * gridData.height, Allocator.Persistent);
+                _integrationField = new NativeArray<ushort>(gridData.width * gridData.height, Allocator.Persistent);
                 _generatedFlowField = new NativeArray<float2>(gridData.width * gridData.height, Allocator.Persistent);
                 _width = gridData.width;
                 _height = gridData.height;
             }
 
             // Step 1: Initialize cost field
-            InitializeCostField(gridData, goalPosition);
+            var costJob = new CostFieldJob
+            {
+                nodes = gridData.nodes,
+                goalPosition = goalPosition,
+                costField = _costField,
+                width = _width
+            };
+            JobHandle costHandle = costJob.Schedule(gridData.nodes.Length, 64);
 
             // Step 2: Calculate integration field (Dijkstra-like)
-            CalculateIntegrationField(goalPosition);
+            var integrationJob = new IntegrationFieldJob
+            {
+                costField = _costField,
+                integrationField = _integrationField,
+                goalPosition = goalPosition,
+                width = _width,
+                height = _height
+            };
+            JobHandle integrationHandle = integrationJob.Schedule(costHandle);
 
             // Step 3: Generate flow field
-            GenerateFlowField();
+            var flowJob = new FlowFieldJob
+            {
+                integrationField = _integrationField,
+                flowField = _generatedFlowField,
+                width = _width,
+                height = _height
+            };
+            JobHandle flowHandle = flowJob.Schedule(_generatedFlowField.Length, 64, integrationHandle);
+
+            flowHandle.Complete();
         }
 
         public float2 GetDirection(int2 pos)
@@ -73,129 +239,16 @@ namespace ChickenPathfinding
             return new int2(x, y);
         }
 
-        private void InitializeCostField(GridData gridData, int2 goalPosition)
-        {
-            for (int i = 0; i < gridData.nodes.Length; i++)
-            {
-                Node node = gridData.nodes[i];
-                int x = node.position.x;
-                int y = node.position.y;
-
-                if (!node.walkable)
-                {
-                    costField[x, y] = 0; // Obstacle
-                }
-                else if (node.position.x == goalPosition.x && node.position.y == goalPosition.y)
-                {
-                    costField[x, y] = 255; // Goal
-                }
-                else
-                {
-                    costField[x, y] = 1; // Walkable
-                }
-            }
-        }
-
-        private void CalculateIntegrationField(int2 goalPosition)
-        {
-            // Initialize integration field
-            for (int x = 0; x < _width; x++)
-            {
-                for (int y = 0; y < _height; y++)
-                {
-                    integrationField[x, y] = costField[x, y] == 0 ? (ushort)65535 : (ushort)65534;
-                }
-            }
-
-            // Set goal
-            integrationField[goalPosition.x, goalPosition.y] = 0;
-
-            // Dijkstra's algorithm - process cells in order of increasing cost
-            Queue<int2> openSet = new Queue<int2>();
-            openSet.Enqueue(goalPosition);
-
-            while (openSet.Count > 0)
-            {
-                int2 currentPos = openSet.Dequeue();
-                ushort currentCost = integrationField[currentPos.x, currentPos.y];
-
-                // Check all 8 neighbors
-                for (int dx = -1; dx <= 1; dx++)
-                {
-                    for (int dy = -1; dy <= 1; dy++)
-                    {
-                        if (dx == 0 && dy == 0) continue;
-
-                        int2 neighborPos = currentPos + new int2(dx, dy);
-                        if (!IsValidPosition(neighborPos)) continue;
-
-                        byte neighborCostValue = costField[neighborPos.x, neighborPos.y];
-
-                        if (neighborCostValue == 0) continue; // Obstacle
-
-                        // Calculate new cost (diagonal moves cost more)
-                        ushort moveCost = (ushort)((dx != 0 && dy != 0) ? 14 : 10);
-                        ushort newCost = (ushort)(currentCost + moveCost);
-
-                        if (newCost < integrationField[neighborPos.x, neighborPos.y])
-                        {
-                            integrationField[neighborPos.x, neighborPos.y] = newCost;
-                            openSet.Enqueue(neighborPos);
-                        }
-                    }
-                }
-            }
-        }
-
-        private void GenerateFlowField()
-        {
-            for (int x = 0; x < _width; x++)
-            {
-                for (int y = 0; y < _height; y++)
-                {
-                    int2 pos = new int2(x, y);
-                    int index = x + y * _width;
-                    _generatedFlowField[index] = CalculateDirection(pos);
-                }
-            }
-        }
-
-        private float2 CalculateDirection(int2 pos)
-        {
-            if (!IsValidPosition(pos)) return float2.zero;
-
-            ushort currentCost = integrationField[pos.x, pos.y];
-
-            if (currentCost >= 65534) return float2.zero; // No valid path
-
-            float2 bestDirection = float2.zero;
-            ushort bestNeighborCost = currentCost;
-
-            // Check all 8 neighbors to find lowest cost
-            for (int dx = -1; dx <= 1; dx++)
-            {
-                for (int dy = -1; dy <= 1; dy++)
-                {
-                    if (dx == 0 && dy == 0) continue;
-
-                    int2 neighborPos = pos + new int2(dx, dy);
-                    if (!IsValidPosition(neighborPos)) continue;
-
-                    ushort neighborCost = integrationField[neighborPos.x, neighborPos.y];
-
-                    if (neighborCost < bestNeighborCost)
-                    {
-                        bestNeighborCost = neighborCost;
-                        bestDirection = math.normalize(new float2(dx, dy));
-                    }
-                }
-            }
-
-            return bestDirection;
-        }
-
         public void Dispose()
         {
+            if (_costField.IsCreated)
+            {
+                _costField.Dispose();
+            }
+            if (_integrationField.IsCreated)
+            {
+                _integrationField.Dispose();
+            }
             if (_generatedFlowField.IsCreated)
             {
                 _generatedFlowField.Dispose();

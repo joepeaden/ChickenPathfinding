@@ -10,10 +10,5 @@ namespace ChickenPathfinding
         {
             _agentSpawnedEvent.Invoke(this);
         }
-
-        public void MoveByOffset(Vector3 offset)
-        {
-            transform.position += offset;
-        }
     }
 }
