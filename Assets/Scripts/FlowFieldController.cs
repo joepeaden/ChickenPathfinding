@@ -2,34 +2,39 @@ using UnityEngine;
 using Unity.Collections;
 using Unity.Mathematics;
 using Unity.Jobs;
-using System.Linq;
 using Unity.Burst;
 
 namespace ChickenPathfinding
 {
     /// <summary>
-    /// Handles generating the flow field, and allows use of the flow field through GetFlowDirections
-    /// when necessary.
+    /// Communication interface for use of the flow field.
     /// </summary>
     public class FlowFieldController
     {
+        public GridData GridData => _grid.GridDataReadonly;
         private MyGrid _grid;
-        private FlowField flowField;
-        private JobHandle _flowGenerationJobHandle;
+        private FlowField _flowField;
 
         public FlowFieldController(MyGrid grid)
         {
             _grid = grid;
-            flowField = new FlowField();
+            _flowField = new FlowField();
         }
 
         /// <summary>
-        /// "Kickoff" because it doesn't happen immediately necesesarily, it's a Jobs implementation. 
+        /// Start flow field generation and return the job handle.
         /// </summary>
-        /// <param name="destination"></param>
-        public void KickOffRegenFlowField(int2 destination)
+        public JobHandle StartFlowFieldGeneration(int2 destination)
         {
-            _flowGenerationJobHandle = flowField.KickOffGenerationJobs(_grid.GridDataReadonly, destination);
+            return _flowField.KickOffGenerationJobs(GridData, destination);
+        }
+
+        /// <summary>
+        /// Get the current flow field for reading.
+        /// </summary>
+        public NativeArray<float2> GetCurrentFlowField()
+        {
+            return _flowField.GetCurrentFlowField();
         }
 
         public int2 GetGridPositionFromWorld(Vector3 position)
@@ -40,33 +45,12 @@ namespace ChickenPathfinding
             );
         }
 
-        // Provide access to flow field for agents
-        public JobHandle ScheduleGetFlowDirections(NativeArray<float3> currentPositions, NativeArray<float2> resultDirections)
-        {
-            AssignMoveDirJob assignMoveJob = new AssignMoveDirJob()
-            {
-                flowField = flowField.GetCopyOfFlowField(),
-                gridData = _grid.GridDataReadonly,
-                currentPositions = currentPositions,
-                resultDirections = resultDirections
-            };
-
-            int arrayBatchSize = 100;
-            return assignMoveJob.Schedule(currentPositions.Count(), arrayBatchSize, _flowGenerationJobHandle);
-        }
-
-        // this is horrendous. Passing back and forth like this. I guess this is the pain that comes with learning something new
-        public void DisposeCopiedFlowField()
-        {
-            flowField.DisposeCopiedFlowField();
-        }
-
         /// <summary>
         /// Dispose anything that needs disposing
         /// </summary>
         public void Cleanup()
         {
-            flowField?.Dispose();
+            _flowField?.Dispose();
         }
     }
 

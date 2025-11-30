@@ -2,11 +2,12 @@ using Unity.Burst;
 using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
-using System.Collections.Generic;
-using Unity.Burst.CompilerServices;
 
 namespace ChickenPathfinding
 {
+    /// <summary>
+    /// Generates the flow field itself
+    /// </summary>
     public class FlowField
     {
         public const ushort BLOCKED_VALUE = ushort.MaxValue;
@@ -17,27 +18,26 @@ namespace ChickenPathfinding
 
         private NativeArray<byte> _costField;
         private NativeArray<ushort> _integrationField;
-        private NativeArray<float2> _copyOfFlowField;
-        private NativeArray<float2> _generatedFlowField;
+        private NativeArray<float2> _readFlowField;  // For agents to read from
+        private NativeArray<float2> _writeFlowField; // For generation jobs to write to
 
         private int _width;
         private int _height;
 
-        public FlowField()
+        /// <summary>
+        /// Get the current flow field for reading (stable buffer).
+        /// </summary>
+        public NativeArray<float2> GetCurrentFlowField()
         {
-            // Arrays will be initialized in Generate
+            return _readFlowField;
         }
 
-        public NativeArray<float2> GetCopyOfFlowField()
+        /// <summary>
+        /// Swap read and write buffers after generation completes.
+        /// </summary>
+        private void SwapBuffers()
         {
-            DisposeCopiedFlowField();
-            _copyOfFlowField = new (_generatedFlowField, Allocator.TempJob);
-            return _copyOfFlowField;
-        }
-
-        public void DisposeCopiedFlowField()
-        {
-            if (_copyOfFlowField.IsCreated) { _copyOfFlowField.Dispose(); }
+            (_readFlowField, _writeFlowField) = (_writeFlowField, _readFlowField);
         }
 
         public JobHandle KickOffGenerationJobs(GridData gridData, int2 goalPosition)
@@ -47,11 +47,13 @@ namespace ChickenPathfinding
             {
                 if (_costField.IsCreated) _costField.Dispose();
                 if (_integrationField.IsCreated) _integrationField.Dispose();
-                if (_generatedFlowField.IsCreated) _generatedFlowField.Dispose();
+                if (_readFlowField.IsCreated) _readFlowField.Dispose();
+                if (_writeFlowField.IsCreated) _writeFlowField.Dispose();
 
                 _costField = new NativeArray<byte>(gridData.width * gridData.height, Allocator.Persistent);
                 _integrationField = new NativeArray<ushort>(gridData.width * gridData.height, Allocator.Persistent);
-                _generatedFlowField = new NativeArray<float2>(gridData.width * gridData.height, Allocator.Persistent);
+                _readFlowField = new NativeArray<float2>(gridData.width * gridData.height, Allocator.Persistent);
+                _writeFlowField = new NativeArray<float2>(gridData.width * gridData.height, Allocator.Persistent);
                 _width = gridData.width;
                 _height = gridData.height;
             }
@@ -80,13 +82,15 @@ namespace ChickenPathfinding
             var flowJob = new FlowFieldJob
             {
                 integrationField = _integrationField,
-                flowField = _generatedFlowField,
+                flowField = _writeFlowField,
                 width = _width,
                 height = _height
             };
-            JobHandle flowHandle = flowJob.Schedule(_generatedFlowField.Length, batchProcessingCount, integrationHandle);
+            JobHandle flowHandle = flowJob.Schedule(_writeFlowField.Length, batchProcessingCount, integrationHandle);
 
+            // After generation completes, swap buffers so agents can read the new flow field
             flowHandle.Complete();
+            SwapBuffers();
 
             return flowHandle;
         }
@@ -95,7 +99,7 @@ namespace ChickenPathfinding
         {
             if (!IsValidPosition(pos)) return float2.zero;
             int index = pos.x + pos.y * _width;
-            return _generatedFlowField[index];
+            return _readFlowField[index];
         }
 
         public float2 GetDirection(float3 worldPos, GridData gridData)
@@ -120,8 +124,8 @@ namespace ChickenPathfinding
         {
             if (_costField.IsCreated) { _costField.Dispose(); }
             if (_integrationField.IsCreated) { _integrationField.Dispose(); }
-            if (_generatedFlowField.IsCreated) { _generatedFlowField.Dispose(); }
-            DisposeCopiedFlowField();
+            if (_readFlowField.IsCreated) { _readFlowField.Dispose(); }
+            if (_writeFlowField.IsCreated) { _writeFlowField.Dispose(); }
         }
     }
 
@@ -270,5 +274,3 @@ namespace ChickenPathfinding
         }
     }
 }
-
-

@@ -2,10 +2,8 @@ using UnityEngine;
 using Unity.Mathematics;
 using Unity.Collections;
 using System.Collections.Generic;
-using Unity.Jobs;
 using Unity.Burst;
 using UnityEngine.Jobs;
-using Unity.VisualScripting;
 
 namespace ChickenPathfinding
 {
@@ -16,24 +14,33 @@ namespace ChickenPathfinding
     {
         private const int MAX_ENEMY_COUNT = 3000;
 
+        // Properties for scheduler access
+        public NativeArray<float3> CurrentPositions => _currentPositions;
+        public NativeArray<float2> ResultDirections => _resultDirections;
+        public NativeArray<float3> MoveOffsets => _moveOffsets;
+        public float AgentSpeed => agentSpeed;
+        public int AgentCount => _pathAgents.Count;
+        public TransformAccessArray TransformAccessArray => _transformAccessArray;
+
         [SerializeField] private MyGrid _grid;
         [SerializeField] private Transform target;
         [SerializeField] private float agentSpeed;
         [SerializeField] private AgentSpawnedEvent _agentSpawnedEvent;
 
         private FlowFieldController _flowController;
+        private FlowFieldJobScheduler _jobScheduler;
         private int2 _lastTargetGridPos = new int2(-1, -1);
         private NativeArray<float3> _currentPositions;
         private NativeArray<float3> _moveOffsets;
         private NativeArray<float2> _resultDirections;
         private List<PathAgent> _pathAgents = new();
         private TransformAccessArray _transformAccessArray;
-        private JobHandle _flowDirectionJobHandle;
-        private JobHandle _assignMoveJobHandle;
 
         private void Awake()
         {
             _flowController = new (_grid);
+            _jobScheduler = new FlowFieldJobScheduler(_flowController, this);
+
             _currentPositions = new (MAX_ENEMY_COUNT, Allocator.Persistent);
             _resultDirections = new (MAX_ENEMY_COUNT, Allocator.Persistent);
             _moveOffsets = new (MAX_ENEMY_COUNT, Allocator.Persistent);
@@ -46,17 +53,7 @@ namespace ChickenPathfinding
         {
             RegenFlowIfNeeded();
 
-            if (_flowDirectionJobHandle.IsCompleted && _assignMoveJobHandle.IsCompleted)
-            {
-                _flowDirectionJobHandle.Complete();
-                _flowController.DisposeCopiedFlowField();
-                _assignMoveJobHandle.Complete();
-            }
-        }
-
-        private void LateUpdate()
-        {
-            ScheduleFindMoveDirection();
+            _jobScheduler.TryScheduleAgentJobs();
         }
 
         private void OnDestroy()
@@ -69,8 +66,18 @@ namespace ChickenPathfinding
         private void HandleAgentSpawned(PathAgent agent)
         {
             _pathAgents.Add(agent);
-         
             _transformAccessArray.Add(agent.transform);
+        }
+
+        /// <summary>
+        /// Update current positions collection with world positions
+        /// </summary>
+        public void UpdateAgentCurrentPositions()
+        {
+            for (int i = 0; i < AgentCount; i++)
+            {
+                _currentPositions[i] = _transformAccessArray[i].position;
+            }
         }
 
         private void RegenFlowIfNeeded()
@@ -79,34 +86,9 @@ namespace ChickenPathfinding
 
             if (targetGridPos.x != _lastTargetGridPos.x || targetGridPos.y != _lastTargetGridPos.y)
             {
-                _flowController.KickOffRegenFlowField(targetGridPos);
+                _jobScheduler.RequestFlowFieldUpdate(targetGridPos);
                 _lastTargetGridPos = targetGridPos;
             }
-        }
-
-        private void ScheduleFindMoveDirection()
-        {
-            // what happens if there aren't enough current positions? catch error.
-            for (int i = 0; i < _pathAgents.Count; i++)
-            {
-                _currentPositions[i] = _pathAgents[i].transform.position;
-            }
-
-            _flowDirectionJobHandle = _flowController.ScheduleGetFlowDirections(_currentPositions, _resultDirections);
-            _assignMoveJobHandle = ScheduleAssignMove();
-        }
-
-        private JobHandle ScheduleAssignMove()
-        {
-            CreateTransformOffsets assignMoveJob = new ()
-            {
-                resultDirections = _resultDirections,
-                moveOffsets = _moveOffsets,
-                agentSpeed = agentSpeed,
-                deltaTime = Time.deltaTime
-            };
-
-            return assignMoveJob.ScheduleByRef(_transformAccessArray, _flowDirectionJobHandle);
         }
 
         private void DisposePersistentCollections()
@@ -118,7 +100,7 @@ namespace ChickenPathfinding
         }
     }
 
-     [BurstCompile]
+    [BurstCompile]
     public struct CreateTransformOffsets : IJobParallelForTransform
     {
         private const float REACHED_DESTINATION_THRESHOLD = 0.01f;

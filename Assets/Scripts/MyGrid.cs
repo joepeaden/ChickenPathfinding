@@ -9,7 +9,6 @@ namespace ChickenPathfinding
         // this way, nobody outside of here can modify. We also have a nice
         // readonly package we can expose too in _gridDataReadonly
         public GridData GridDataReadonly => _gridDataReadonly;
-        public NativeArray<Node>.ReadOnly Nodes => _gridDataReadonly.nodes;
         public int Width => _gridDataReadonly.width;
         public int Height => _gridDataReadonly.height;
         public float NodeSize => _gridDataReadonly.nodeSize;
