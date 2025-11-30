@@ -15,8 +15,6 @@ namespace ChickenPathfinding
         public const byte WALKABLE_VALUE = 1;
         public const byte TARGET_VALUE = 255;
 
-        public bool isGenerating;
-
         private NativeArray<byte> _costField;
         private NativeArray<ushort> _integrationField;
         private NativeArray<float2> _copyOfFlowField;
@@ -44,8 +42,6 @@ namespace ChickenPathfinding
 
         public JobHandle KickOffGenerationJobs(GridData gridData, int2 goalPosition)
         {
-            isGenerating = true;
-            
             // Initialize arrays if needed
             if (!_costField.IsCreated || _costField.Length != gridData.width * gridData.height)
             {
@@ -91,11 +87,6 @@ namespace ChickenPathfinding
             JobHandle flowHandle = flowJob.Schedule(_generatedFlowField.Length, batchProcessingCount, integrationHandle);
 
             flowHandle.Complete();
-
-            
-
-            // do I need isGenerating?
-            isGenerating = false;
 
             return flowHandle;
         }
@@ -178,12 +169,12 @@ namespace ChickenPathfinding
             // Initialize integration field
             for (int i = 0; i < integrationField.Length; i++)
             {
-                integrationField[i] = costField[i] == 0 ? FlowField.BLOCKED_VALUE : FlowField.UNVISITED_VALUE;
+                integrationField[i] = costField[i] == FlowField.NOT_WALKABLE_VALUE ? FlowField.BLOCKED_VALUE : FlowField.UNVISITED_VALUE;
             }
 
             // Set goal
             int goalIndex = goalPosition.x + goalPosition.y * width;
-            integrationField[goalIndex] = 0;
+            integrationField[goalIndex] = FlowField.NOT_WALKABLE_VALUE;;
 
             // Dijkstra's algorithm
             NativeQueue<int2> openSet = new NativeQueue<int2>(Allocator.Temp);
@@ -208,8 +199,11 @@ namespace ChickenPathfinding
                         int nIndex = neighborPos.x + neighborPos.y * width;
                         byte nCostValue = costField[nIndex];
 
-                        if (nCostValue == 0) continue;
-
+                        if (nCostValue == FlowField.NOT_WALKABLE_VALUE)
+                        {
+                            continue;
+                        }
+                        
                         ushort moveCost = (ushort)((dx != 0 && dy != 0) ? 14 : 10);
                         ushort newCost = (ushort)(currentCost + moveCost);
 

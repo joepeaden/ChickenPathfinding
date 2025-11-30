@@ -23,11 +23,6 @@ namespace ChickenPathfinding
             flowField = new FlowField();
         }
 
-        public bool IsGridReady()
-        {
-            return !flowField.isGenerating;         
-        }
-
         /// <summary>
         /// "Kickoff" because it doesn't happen immediately necesesarily, it's a Jobs implementation. 
         /// </summary>
@@ -56,7 +51,8 @@ namespace ChickenPathfinding
                 resultDirections = resultDirections
             };
 
-            return assignMoveJob.Schedule(currentPositions.Count(), 100, _flowGenerationJobHandle);
+            int arrayBatchSize = 100;
+            return assignMoveJob.Schedule(currentPositions.Count(), arrayBatchSize, _flowGenerationJobHandle);
         }
 
         // this is horrendous. Passing back and forth like this. I guess this is the pain that comes with learning something new

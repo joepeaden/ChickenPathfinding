@@ -55,11 +55,8 @@ namespace ChickenPathfinding
         }
 
         private void LateUpdate()
-        {            
-            if (_flowController.IsGridReady())
-            {
-                ScheduleFindMoveDirection();
-            }
+        {
+            ScheduleFindMoveDirection();
         }
 
         private void OnDestroy()
