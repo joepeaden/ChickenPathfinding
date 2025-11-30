@@ -19,7 +19,6 @@ namespace ChickenPathfinding
 
         private NativeArray<byte> _costField;
         private NativeArray<ushort> _integrationField;
-
         private NativeArray<float2> _copyOfFlowField;
         private NativeArray<float2> _generatedFlowField;
 
@@ -40,10 +39,7 @@ namespace ChickenPathfinding
 
         public void DisposeCopiedFlowField()
         {
-            if (_copyOfFlowField.IsCreated)
-            {
-                _copyOfFlowField.Dispose();
-            }
+            if (_copyOfFlowField.IsCreated) { _copyOfFlowField.Dispose(); }
         }
 
         public JobHandle KickOffGenerationJobs(GridData gridData, int2 goalPosition)
@@ -131,18 +127,10 @@ namespace ChickenPathfinding
 
         public void Dispose()
         {
-            if (_costField.IsCreated)
-            {
-                _costField.Dispose();
-            }
-            if (_integrationField.IsCreated)
-            {
-                _integrationField.Dispose();
-            }
-            if (_generatedFlowField.IsCreated)
-            {
-                _generatedFlowField.Dispose();
-            }
+            if (_costField.IsCreated) { _costField.Dispose(); }
+            if (_integrationField.IsCreated) { _integrationField.Dispose(); }
+            if (_generatedFlowField.IsCreated) { _generatedFlowField.Dispose(); }
+            DisposeCopiedFlowField();
         }
     }
 

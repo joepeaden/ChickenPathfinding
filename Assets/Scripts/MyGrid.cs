@@ -72,10 +72,7 @@ namespace ChickenPathfinding
 
         private void DisposeGrid()
         {
-            if (grid.IsCreated)
-            {
-                grid.Dispose();
-            }
+            if (grid.IsCreated) { grid.Dispose(); }
         }
 
         private void OnDrawGizmos()
